@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 egg = "0.9.1"
+ordered-float = "3.4.0"
