@@ -63,8 +63,10 @@ impl<'a> CostFunction<ChiIR> for ComputeCost<'a> {
 }
 
 mod test {
+    use std::collections::HashMap;
+
     use crate::{
-        language::{ChiAnalysis, ChiIR, DataType},
+        language::{ChiAnalysis, ChiIR, ConstData, DataType},
         rewrites::alg_simp,
     };
 
@@ -79,6 +81,7 @@ mod test {
         .parse()
         .unwrap();
         let mut egraph: egg::EGraph<ChiIR, ChiAnalysis> = egg::EGraph::new(ChiAnalysis {
+            constants: [("N".to_string(), 16.into())].iter().cloned().collect(),
             name_to_shapes: Default::default(),
             name_to_type: [
                 ("i".to_string(), DataType::Int(32)),
@@ -101,5 +104,6 @@ mod test {
         let (cost, expr) = extractor.find_best(rt);
         println!("Cost: {}", cost);
         println!("Expr: {}", expr.pretty(80));
+        // println!("{:?}", runner.egraph.dump());
     }
 }
