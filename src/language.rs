@@ -41,7 +41,12 @@ define_language! {
         "ewadd" = EWAdd([Id; 2]),
         // Matrix transpose
         "transpose" = Transpose([Id; 1]),
+        "svd" = SVD([Id; 1]),
         "concat" = Concat([Id; 2]),
+        "car" = Car([Id; 1]),
+        "cdr" = Cdr([Id; 1]),
+        "cons" = Cons([Id; 2]),
+        "nil" = Nil,
 
         "ite" = IfThenElse([Id; 3]),
         // Suffix binding
@@ -69,6 +74,7 @@ pub enum DataType {
     Bool,
     UInt(usize),
     TensorType(Box<DataType>, Vec<usize>),
+    TupleType(Box<DataType>, Box<DataType>),
     Unknown,
 }
 
@@ -83,6 +89,7 @@ impl Display for DataType {
             DataType::Bool => write!(f, "bool"),
             DataType::UInt(n) => write!(f, "u{}", n),
             DataType::TensorType(t, s) => write!(f, "{}{:?}", t, s),
+            DataType::TupleType(x, y) => write!(f, "({}, {})", x, y),
             DataType::Unknown => write!(f, "unknown"),
             _ => panic!("Unknown data type: {:?}", self),
         }
@@ -102,27 +109,66 @@ impl FromStr for DataType {
             "bool" => Ok(DataType::Bool),
             "u32" => Ok(DataType::UInt(32)),
             "u64" => Ok(DataType::UInt(64)),
+            x if x.starts_with("(") && x.ends_with(")") => {
+                let mut split = x[1..x.len() - 1].split(',');
+                let x = split.next().unwrap().trim().parse()?;
+                let y = split.next().unwrap().trim().parse()?;
+                Ok(DataType::TupleType(Box::new(x), Box::new(y)))
+            }
             "unknown" => Ok(DataType::Unknown),
             _ => Err(format!("Unknown data type: {}", s)),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ChiAnalysis {
-    pub state: HashMap<String, Id>,
     pub name_to_shapes: HashMap<String, Vec<usize>>,
+    pub name_to_type: HashMap<String, DataType>,
+}
+
+impl ChiAnalysis {
+    pub fn get_dtype(egraph: &EGraph<ChiIR, ChiAnalysis>, id: &Id) -> DataType {
+        match &egraph[*id].data {
+            ChiAnalysisData::DType(dtype) => dtype.clone(),
+            _ => panic!("Cannot get dtype: {:?}", egraph[*id]),
+        }
+    }
+
+    pub fn get_shape(egraph: &EGraph<ChiIR, ChiAnalysis>, id: &Id) -> Vec<usize> {
+        match &egraph[*id].data {
+            ChiAnalysisData::DType(dt) => match dt {
+                DataType::TensorType(_, s) => s.clone(),
+                _ => panic!("Cannot get shape: {:?}", egraph[*id]),
+            },
+            ChiAnalysisData::Shape(shape) => shape.clone(),
+            _ => panic!("Cannot get shape: {:?}", egraph[*id]),
+        }
+    }
+
+    pub fn check_dtype(egraph: &EGraph<ChiIR, ChiAnalysis>, id: &Id, dtype: &DataType) -> bool {
+        let actual = Self::get_dtype(egraph, id);
+        actual == *dtype
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum ChiAnalysisData {
     DType(DataType),
     Shape(Vec<usize>),
+    Binding(Id, Id),
     LoopVar(HashMap<ChiIR, HashSet<String>>),
 }
 
 fn promote_dtype(x: &DataType, y: &DataType) -> DataType {
     match x {
+        DataType::TupleType(car, cdr) => match y {
+            DataType::TupleType(car2, cdr2) => DataType::TupleType(
+                Box::new(promote_dtype(car, car2)),
+                Box::new(promote_dtype(cdr, cdr2)),
+            ),
+            _ => panic!("Cannot promote tuple type with non-tuple type"),
+        },
         DataType::Unknown => y.clone(),
         DataType::Int(x_bits) => match y {
             DataType::Unknown => x.clone(),
@@ -135,6 +181,7 @@ fn promote_dtype(x: &DataType, y: &DataType) -> DataType {
             }
             DataType::UInt(_) => y.clone(),
             DataType::Float(_) => y.clone(),
+            DataType::TupleType(_, _) => panic!("Cannot promote tuple type with int"),
             DataType::Bool => panic!("Cannot decide dtype between bool and int"),
             DataType::TensorType(_, _) => panic!("Cannot decide dtype between tensor and int"),
         },
@@ -149,6 +196,7 @@ fn promote_dtype(x: &DataType, y: &DataType) -> DataType {
                 }
             }
             DataType::Float(_) => y.clone(),
+            DataType::TupleType(_, _) => panic!("Cannot promote tuple type with UInt"),
             DataType::Bool => panic!("Cannot decide dtype between bool and uint"),
             DataType::TensorType(_, _) => panic!("Cannot decide dtype between tensor and uint"),
         },
@@ -163,6 +211,7 @@ fn promote_dtype(x: &DataType, y: &DataType) -> DataType {
                     y.clone()
                 }
             }
+            DataType::TupleType(_, _) => panic!("Cannot promote tuple type with float"),
             DataType::Bool => panic!("Cannot decide dtype between bool and float"),
             DataType::TensorType(_, _) => panic!("Cannot decide dtype between tensor and float"),
         },
@@ -191,7 +240,8 @@ impl Analysis<ChiIR> for ChiAnalysis {
                 if l == r {
                     DidMerge(false, false)
                 } else {
-                    panic!("Type mismatch: {:?} vs {:?}", l, r);
+                    *l = promote_dtype(l, r);
+                    DidMerge(true, false)
                 }
             }
             (ChiAnalysisData::Shape(l), ChiAnalysisData::Shape(r)) => {
@@ -362,6 +412,15 @@ impl Analysis<ChiIR> for ChiAnalysis {
                     ChiAnalysisData::DType(DataType::Float(32))
                 } else if let Ok(_) = s.parse::<bool>() {
                     ChiAnalysisData::DType(DataType::Bool)
+                } else if let Some(dt) = egraph.analysis.name_to_type.get(s) {
+                    if let Some(shape) = egraph.analysis.name_to_shapes.get(s) {
+                        ChiAnalysisData::DType(DataType::TensorType(
+                            Box::new(dt.clone()),
+                            shape.clone(),
+                        ))
+                    } else {
+                        ChiAnalysisData::DType(dt.clone())
+                    }
                 } else {
                     ChiAnalysisData::DType(DataType::Unknown)
                 }
@@ -382,6 +441,26 @@ impl Analysis<ChiIR> for ChiAnalysis {
                     }
                 } else {
                     panic!("Unexpected data for transpose: {:?}", egraph[*x].data);
+                }
+            }
+            ChiIR::SVD([x]) => {
+                if let ChiAnalysisData::DType(dt) = &egraph[*x].data {
+                    if let DataType::TensorType(dtype, shape) = dt {
+                        let (m, n) = (shape[0], shape[1]);
+                        assert_eq!(m, n);
+                        let ret_mat_dtype = DataType::TensorType(dtype.clone(), vec![n, n]);
+                        ChiAnalysisData::DType(DataType::TupleType(
+                            Box::new(DataType::TupleType(
+                                Box::new(ret_mat_dtype.clone()),
+                                Box::new(ret_mat_dtype.clone()),
+                            )),
+                            Box::new(ret_mat_dtype),
+                        ))
+                    } else {
+                        panic!("Unexpected dtype for SVD: {:?}", dt);
+                    }
+                } else {
+                    panic!("Unexpected data for SVD: {:?}", egraph[*x].data);
                 }
             }
             ChiIR::MatMul([x, y]) => {
@@ -410,6 +489,27 @@ impl Analysis<ChiIR> for ChiAnalysis {
                         (&egraph[*x].data, &egraph[*y].data)
                     );
                 }
+            }
+            ChiIR::Car([x]) => {
+                let x_dtype = ChiAnalysis::get_dtype(egraph, x);
+                if let DataType::TupleType(x, _) = x_dtype {
+                    return ChiAnalysisData::DType(*x.clone());
+                } else {
+                    panic!("Unexpected data for car: {:?}", x_dtype);
+                }
+            }
+            ChiIR::Cdr([x]) => {
+                let x_dtype = ChiAnalysis::get_dtype(egraph, x);
+                if let DataType::TupleType(_, x) = x_dtype {
+                    return ChiAnalysisData::DType(*x.clone());
+                } else {
+                    panic!("Unexpected data for cdr: {:?}", x_dtype);
+                }
+            }
+            ChiIR::Cons([x, y]) => {
+                let x_dtype = ChiAnalysis::get_dtype(egraph, x);
+                let y_dtype = ChiAnalysis::get_dtype(egraph, y);
+                ChiAnalysisData::DType(DataType::TupleType(Box::new(x_dtype), Box::new(y_dtype)))
             }
             ChiIR::While([cond, _]) => {
                 if let ChiAnalysisData::DType(DataType::Bool) = &egraph[*cond].data {
@@ -448,6 +548,41 @@ impl Analysis<ChiIR> for ChiAnalysis {
                     );
                 }
             }
+            ChiIR::IfThenElse([cond, b1, b2]) => {
+                assert!(ChiAnalysis::check_dtype(egraph, cond, &DataType::Bool));
+                let ret_type = ChiAnalysis::get_dtype(egraph, b2);
+                assert!(ChiAnalysis::check_dtype(egraph, b1, &ret_type));
+                ChiAnalysisData::DType(ret_type)
+            }
+            ChiIR::Let([x, v]) => ChiAnalysisData::Binding(x.clone(), v.clone()),
+            ChiIR::Compute(xs) => {
+                assert!(xs.len() > 0);
+                let e = xs[0];
+                let enode = &egraph[e].nodes[0];
+                let mut bindings = HashMap::new();
+                for x in xs.iter().skip(1) {
+                    if let ChiAnalysisData::Binding(x, v) = &egraph[*x].data {
+                        if let ChiAnalysisData::DType(dt) = &egraph[*v].data {
+                            for sym in &egraph[*x].nodes {
+                                if let ChiIR::Symbol(s) = sym {
+                                    bindings.insert(s.clone(), dt.clone());
+                                } else {
+                                    panic!("Unknown binding symbol: {:?}", sym);
+                                }
+                            }
+                        }
+                    } else {
+                        panic!("Unexpected data for compute: {:?}", egraph[*x].data);
+                    }
+                }
+                let analysis = ChiAnalysis {
+                    name_to_shapes: HashMap::new(),
+                    name_to_type: bindings,
+                };
+                let mut egraph = egraph.clone();
+                egraph.analysis = analysis;
+                ChiAnalysis::make(&egraph, &enode)
+            }
             _ => unimplemented!(),
         }
     }
@@ -483,13 +618,14 @@ mod test {
                         (vector (cast 5.0 f32) (cast 6.0 f32) (cast 7.0 f32)))"
             .parse::<RecExpr<ChiIR>>()
             .unwrap();
+        // let _x = "(compute (matmul x (matmul x y)) (let x (matrix ...)))";
         let y = "(matmul (matrix (vector 1 2 3) (vector 4 5 6) (vector 7 8 9) i32)
                                          (matrix (vector 1 2) (vector 4 5) (vector 7 8) i32)))"
             .parse::<RecExpr<ChiIR>>()
             .unwrap();
         let mut egraph = EGraph::new(ChiAnalysis {
-            state: HashMap::default(),
             name_to_shapes: HashMap::default(),
+            name_to_type: HashMap::default(),
         });
         let id = egraph.add_expr(&x);
         println!("{:?}", egraph[id].data);
