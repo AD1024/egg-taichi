@@ -48,6 +48,8 @@ define_language! {
         "cons" = Cons([Id; 2]),
         "nil" = Nil,
 
+        "seq" = Seq([Id; 2]),
+
         "ite" = IfThenElse([Id; 3]),
         // Suffix binding
         // (compute <expr> <bindings>)
@@ -771,6 +773,33 @@ impl Analysis<ChiIR> for ChiAnalysis {
                         Box::new(y_dtype),
                     )),
                     consts: None,
+                }
+            }
+            ChiIR::Seq([_, _]) => {
+                // TODO: Maybe useful when propagating static analysis info
+                ChiAnalysisData {
+                    analysis_info: AnalysisInfo::DType(DataType::Unknown),
+                    consts: None,
+                }
+            }
+            ChiIR::Load([v]) => {
+                if let AnalysisInfo::DType(dt) = &egraph[*v].data.analysis_info {
+                    ChiAnalysisData {
+                        analysis_info: AnalysisInfo::DType(dt.clone()),
+                        consts: None,
+                    }
+                } else {
+                    panic!("Unexpected data for load: {:?}", egraph[*v].data);
+                }
+            }
+            ChiIR::Store([_, val]) => {
+                if let AnalysisInfo::DType(dt) = &egraph[*val].data.analysis_info {
+                    ChiAnalysisData {
+                        analysis_info: AnalysisInfo::DType(dt.clone()),
+                        consts: None,
+                    }
+                } else {
+                    panic!("Unexpected data for store: {:?}", egraph[*val].data);
                 }
             }
             ChiIR::While([cond, _]) => {

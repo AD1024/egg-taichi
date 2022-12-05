@@ -76,6 +76,9 @@ pub fn alg_simp() -> Vec<Rewrite<ChiIR, ChiAnalysis>> {
         rw!("ewadd-comm"; "(ewadd ?x ?y)" => "(ewadd ?y ?x)"),
         rw!("ewadd-assoc"; "(ewadd (ewadd ?x ?y) ?z)" => "(ewadd ?x (ewadd ?y ?z))"),
         rw!("const-fold-add"; "(sadd ?x ?y)" => { BinopConstFoldApplier { lhs: "?x".parse().unwrap(), rhs: "?y".parse().unwrap(), op: "+".to_string() }}),
+        rw!("const-fold-mult"; "(smult ?x ?y)" => { BinopConstFoldApplier { lhs: "?x".parse().unwrap(), rhs: "?y".parse().unwrap(), op: "*".to_string() }}),
+        rw!("const-fold-div"; "(sdiv ?x ?y)" => { BinopConstFoldApplier { lhs: "?x".parse().unwrap(), rhs: "?y".parse().unwrap(), op: "/".to_string() }}),
+        rw!("const-fold-sub"; "(sminus ?x ?y)" => { BinopConstFoldApplier { lhs: "?x".parse().unwrap(), rhs: "?y".parse().unwrap(), op: "-".to_string() }}),
         rw!("div-1"; "(sdiv ?x 1)" => "?x"),
         rw!("div-cast-1"; "(sdiv ?x 1)" => "?x"),
     ]

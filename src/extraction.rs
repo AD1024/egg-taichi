@@ -31,6 +31,7 @@ impl<'a> CostFunction<ChiIR> for ComputeCost<'a> {
             | ChiIR::Lte([x, y])
             | ChiIR::SDiv([x, y]) => costs(*x) + costs(*y) + 1,
             ChiIR::EWAdd([x, _]) => costs(*x),
+            ChiIR::Seq([s1, s2]) => costs(*s1) + costs(*s2),
             ChiIR::MatMul([x, y]) => {
                 let x_shape = ChiAnalysis::get_shape(self.egraph, x);
                 let y_shape = ChiAnalysis::get_shape(self.egraph, y);
@@ -104,6 +105,7 @@ mod test {
         let (cost, expr) = extractor.find_best(rt);
         println!("Cost: {}", cost);
         println!("Expr: {}", expr.pretty(80));
+        // runner.egraph.dot().to_png("/root/cse.png").unwrap();
         // println!("{:?}", runner.egraph.dump());
     }
 }
