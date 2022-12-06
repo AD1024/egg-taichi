@@ -3,7 +3,7 @@ An experimental project trying to integrate [egg](https://egraphs-good.github.io
 for superoptimization.
 
 # Status
-- [ ] Representations
-- [ ] Functional rewrites
+- [ x ] Representations
+- [ x ] Functional rewrites
 - [ ] Abstract interpretation with EGraph (*a la* [this paper](https://arxiv.org/pdf/2203.09191.pdf))
 - [ ] Effect analysis and rewrite imperative parts
