@@ -22,6 +22,7 @@ define_language! {
         ">" = Gt([Id; 2]),
         "<" = Lt([Id; 2]),
         "==" = Equals([Id; 2]),
+        "pow" = Pow([Id; 2]),
 
         "bitand" = BitAnd([Id; 2]),
         "bitor" = BitOr([Id; 2]),
@@ -39,6 +40,7 @@ define_language! {
         // element-wise addition
         // (ewadd mat/vec mat/vec)
         "ewadd" = EWAdd([Id; 2]),
+        "ewmult" = EWMult([Id; 2]),
         // Matrix transpose
         "transpose" = Transpose([Id; 1]),
         "svd" = SVD([Id; 1]),
@@ -185,6 +187,34 @@ impl ConstData {
             _ => unimplemented!()
             // ConstData::Matrix(_) => DataType::TensorType(Box::new(DataType::Float(32)), vec![2, 2]),
             // ConstData::Vector(_) => DataType::TensorType(Box::new(DataType::Float(32)), vec![2]),
+        }
+    }
+
+    pub fn shl(x: &ConstData, y: &ConstData) -> ConstData {
+        match (x, y) {
+            (ConstData::Int(x), ConstData::Int(y)) => ConstData::Int(x << y),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn shr(x: &ConstData, y: &ConstData) -> ConstData {
+        match (x, y) {
+            (ConstData::Int(x), ConstData::Int(y)) => ConstData::Int(x >> y),
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn power(x: &ConstData, y: &ConstData) -> ConstData {
+        match (x, y) {
+            (ConstData::Int(x), ConstData::Int(y)) => {
+                if y < &0 {
+                    ConstData::Int(0)
+                } else {
+                    ConstData::Int(x.pow(*y as u32))
+                }
+            }
+            (ConstData::Float(x), ConstData::Float(y)) => ConstData::Float(x.powf(*y)),
+            _ => unimplemented!(),
         }
     }
 }
@@ -462,7 +492,8 @@ impl Analysis<ChiIR> for ChiAnalysis {
             | ChiIR::SMult([x, y])
             | ChiIR::SDiv([x, y])
             | ChiIR::SMod([x, y])
-            | ChiIR::SAdd([x, y]) => match (
+            | ChiIR::SAdd([x, y])
+            | ChiIR::Pow([x, y]) => match (
                 &egraph[*x].data.analysis_info,
                 &egraph[*y].data.analysis_info,
             ) {
@@ -838,7 +869,7 @@ impl Analysis<ChiIR> for ChiAnalysis {
                     );
                 }
             }
-            ChiIR::EWAdd([x, y]) => {
+            ChiIR::EWAdd([x, y]) | ChiIR::EWMult([x, y]) => {
                 if let (AnalysisInfo::DType(x_dt), AnalysisInfo::DType(y_dt)) = (
                     &egraph[*x].data.analysis_info,
                     &egraph[*y].data.analysis_info,
@@ -853,7 +884,10 @@ impl Analysis<ChiIR> for ChiAnalysis {
                         }
                         // ChiAnalysisData::DType(promote_dtype(x_dtype, y_dtype))
                         ChiAnalysisData {
-                            analysis_info: AnalysisInfo::DType(promote_dtype(x_dtype, y_dtype)),
+                            analysis_info: AnalysisInfo::DType(DataType::TensorType(
+                                Box::new(promote_dtype(x_dtype, y_dtype)),
+                                x_shape.clone(),
+                            )),
                             consts: None,
                         }
                     } else {
