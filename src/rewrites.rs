@@ -78,6 +78,8 @@ pub fn alg_simp() -> Vec<Rewrite<ChiIR, ChiAnalysis>> {
         rw!("const-fold-add"; "(sadd ?x ?y)" => { BinopConstFoldApplier { lhs: "?x".parse().unwrap(), rhs: "?y".parse().unwrap(), op: "+".to_string() }}),
         rw!("div-1"; "(sdiv ?x 1)" => "?x"),
         rw!("div-cast-1"; "(sdiv ?x 1)" => "?x"),
+        rw!("ite-true"; "(ite true ?x ?y)" => "?x"),
+        rw!("ite-false"; "(ite false ?x ?y)" => "?y"),
     ]
 }
 

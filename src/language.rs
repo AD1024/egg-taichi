@@ -187,6 +187,28 @@ impl ConstData {
     }
 }
 
+impl core::ops::BitAnd for ConstData {
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (ConstData::Bool(x), ConstData::Bool(y)) => ConstData::Bool(x & y),
+            (x, y) => panic!("Cannot perform bitand on {:?} and {:?}", x, y),
+        }
+    }
+}
+
+impl core::ops::BitOr for ConstData {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (ConstData::Bool(x), ConstData::Bool(y)) => ConstData::Bool(x | y),
+            (x, y) => panic!("Cannot perform bitor on {:?} and {:?}", x, y),
+        }
+    }
+}
+
 impl core::ops::Add for ConstData {
     type Output = Self;
 
