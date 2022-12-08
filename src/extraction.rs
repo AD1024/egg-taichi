@@ -15,45 +15,52 @@ impl<'a> CostFunction<ChiIR> for ComputeCost<'a> {
     {
         let c = match enode {
             ChiIR::Constant(_) | ChiIR::Var(_) | ChiIR::Matrix(_) | ChiIR::Vector(_) => 1,
-            ChiIR::SAdd([x, y])
-            | ChiIR::SMinus([x, y])
-            | ChiIR::SMult([x, y])
-            | ChiIR::SMod([x, y])
-            | ChiIR::BitAnd([x, y])
+            ChiIR::SAdd([x, y]) | ChiIR::SMinus([x, y]) => 5 * i64::max(costs(*x), costs(*y)),
+            ChiIR::SMult([x, y]) | ChiIR::SMod([x, y]) | ChiIR::SDiv([x, y]) => {
+                10 * i64::max(costs(*x), costs(*y))
+            }
+            ChiIR::BitAnd([x, y])
             | ChiIR::BitOr([x, y])
             | ChiIR::BitXor([x, y])
             | ChiIR::BitShl([x, y])
-            | ChiIR::BitShr([x, y])
-            | ChiIR::Equals([x, y])
+            | ChiIR::BitShr([x, y]) => i64::max(costs(*x), costs(*y)),
+            ChiIR::Equals([x, y])
             | ChiIR::Gt([x, y])
             | ChiIR::Lt([x, y])
             | ChiIR::Gte([x, y])
-            | ChiIR::Lte([x, y])
-            | ChiIR::SDiv([x, y]) => costs(*x) + costs(*y) + 1,
-            ChiIR::EWAdd([x, _]) | ChiIR::EWMult([x, _]) => costs(*x) * 2,
-            ChiIR::Seq([s1, s2]) => costs(*s1) + costs(*s2),
-            ChiIR::While([cond, body]) => costs(*cond) + costs(*body),
-            ChiIR::IfThenElse([cond, then, els]) => costs(*cond) + costs(*then) + costs(*els),
-            ChiIR::Transpose([x]) => costs(*x),
+            | ChiIR::Lte([x, y]) => i64::max(costs(*x), costs(*y)),
+            ChiIR::EWAdd([x, _]) => ChiAnalysis::get_shape(self.egraph, x)
+                .iter()
+                .map(|x| *x as i64)
+                .sum::<i64>(),
+            ChiIR::EWMult([x, _]) => {
+                2 * ChiAnalysis::get_shape(self.egraph, x)
+                    .iter()
+                    .map(|x| *x as i64)
+                    .sum::<i64>()
+            }
+            ChiIR::Seq([_, _]) => 0,
+            ChiIR::While([_, _]) => 0,
+            ChiIR::IfThenElse([_, _, _]) => 0,
+            ChiIR::Transpose([x]) => ChiAnalysis::get_shape(self.egraph, x)
+                .iter()
+                .map(|x| *x as i64)
+                .sum::<i64>(),
             ChiIR::MatMul([x, y]) => {
                 let x_shape = ChiAnalysis::get_shape(self.egraph, x);
                 let y_shape = ChiAnalysis::get_shape(self.egraph, y);
-                (x_shape[0] * x_shape[1] * y_shape[1] + 1) as i64
+                (x_shape[0] * x_shape[1] * y_shape[1]) as i64
             }
-            ChiIR::Cons([x, y]) => {
-                let x_cost = costs(*x);
-                let y_cost = costs(*y);
-                x_cost + y_cost + 1
-            }
+            ChiIR::Cons([_, _]) => 1,
             ChiIR::Car([x]) => match &self.egraph[*x].nodes[0] {
-                ChiIR::Cons([car, _]) => costs(*car) + 1,
+                ChiIR::Cons([_, _]) => 1,
                 _ => panic!(
                     "Expecting a list construction, got {:?>}",
                     self.egraph[*x].nodes[0]
                 ),
             },
             ChiIR::Cdr([x]) => match &self.egraph[*x].nodes[0] {
-                ChiIR::Cons([_, cdr]) => costs(*cdr) + 1,
+                ChiIR::Cons([_, _]) => 1,
                 _ => panic!(
                     "Expecting a list construction, got {:?>}",
                     self.egraph[*x].nodes[0]
@@ -125,13 +132,13 @@ mod test {
         let mut egraph: egg::EGraph<ChiIR, ChiAnalysis> = egg::EGraph::new(ChiAnalysis {
             constants: HashMap::default(),
             name_to_shapes: [
-                ("input".to_string(), vec![32, 32]),
-                ("W1".to_string(), vec![32, 64]),
-                ("b1".to_string(), vec![32, 64]),
-                ("W2".to_string(), vec![64, 128]),
-                ("b2".to_string(), vec![32, 128]),
-                ("W3".to_string(), vec![128, 10]),
-                ("b3".to_string(), vec![32, 10]),
+                ("input".to_string(), vec![16, 16]),
+                ("W1".to_string(), vec![16, 32]),
+                ("b1".to_string(), vec![16, 32]),
+                ("W2".to_string(), vec![32, 64]),
+                ("b2".to_string(), vec![16, 64]),
+                ("W3".to_string(), vec![64, 10]),
+                ("b3".to_string(), vec![16, 10]),
             ]
             .iter()
             .cloned()
@@ -159,6 +166,7 @@ mod test {
         );
         let (cost, _) = extractor.find_best(rt);
         println!("Cost before optimization: {}", cost);
+        println!("Expr: {}", expr.pretty(80));
         drop(extractor);
         let mut rules = alg_simp();
         rules.extend(linalg_simp());
