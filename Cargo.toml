@@ -6,5 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-egg = "0.9.1"
 ordered-float = "3.4.0"
+
+[dependencies.egg]
+git = "https://github.com/AD1024/egg.git"
+rev = "c204876239871bb976dd39cb550eeaea4f8dc534"

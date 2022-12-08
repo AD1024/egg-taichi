@@ -486,7 +486,7 @@ impl Analysis<ChiIR> for ChiAnalysis {
             }
     }
 
-    fn make(egraph: &egg::EGraph<ChiIR, Self>, enode: &ChiIR) -> ChiAnalysisData {
+    fn make(egraph: &mut egg::EGraph<ChiIR, Self>, enode: &ChiIR) -> ChiAnalysisData {
         match enode {
             ChiIR::SMinus([x, y])
             | ChiIR::SMult([x, y])
@@ -943,7 +943,7 @@ impl Analysis<ChiIR> for ChiAnalysis {
                 };
                 let mut egraph = egraph.clone();
                 egraph.analysis = analysis;
-                ChiAnalysis::make(&egraph, &enode)
+                ChiAnalysis::make(&mut egraph, &enode)
             }
             _ => unimplemented!(),
         }
