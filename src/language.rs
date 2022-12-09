@@ -36,6 +36,7 @@ define_language! {
         // Matrix init
         // (matrix <list of vectors> <data-type>)
         "matrix" = Matrix(Vec<Id>),
+        "index" = Index([Id; 2]),
         "matmul" = MatMul([Id; 2]),
         // element-wise addition
         // (ewadd mat/vec mat/vec)
@@ -174,8 +175,8 @@ pub enum ConstData {
     Int(i32),
     Float(f32),
     Bool(bool),
-    Matrix(Vec<Vec<f32>>),
-    Vector(Vec<f32>),
+    Matrix(Vec<Vec<Box<ConstData>>>),
+    Vector(Vec<Box<ConstData>>),
 }
 
 impl ConstData {
@@ -250,13 +251,21 @@ impl core::ops::Add for ConstData {
             (ConstData::Float(x), ConstData::Float(y)) => ConstData::Float(x + y),
             (ConstData::Int(x), ConstData::Float(y)) => ConstData::Float(x as f32 + y),
             (ConstData::Float(x), ConstData::Int(y)) => ConstData::Float(x + y as f32),
-            (ConstData::Vector(x), ConstData::Vector(y)) => {
-                ConstData::Vector(x.into_iter().zip(y).map(|(x, y)| x + y).collect())
-            }
+            (ConstData::Vector(x), ConstData::Vector(y)) => ConstData::Vector(
+                x.into_iter()
+                    .zip(y)
+                    .map(|(x, y)| Box::new((*x.deref()).clone() + (*y.deref()).clone()))
+                    .collect(),
+            ),
             (ConstData::Matrix(x), ConstData::Matrix(y)) => ConstData::Matrix(
                 x.into_iter()
                     .zip(y)
-                    .map(|(x, y)| x.into_iter().zip(y).map(|(x, y)| x + y).collect())
+                    .map(|(x, y)| {
+                        x.into_iter()
+                            .zip(y)
+                            .map(|(x, y)| Box::new((*x.deref()).clone() + (*y.deref()).clone()))
+                            .collect()
+                    })
                     .collect(),
             ),
             (x, y) => panic!("Cannot add {:?} and {:?}", x, y),
@@ -273,13 +282,21 @@ impl core::ops::Mul for ConstData {
             (ConstData::Float(x), ConstData::Float(y)) => ConstData::Float(x * y),
             (ConstData::Int(x), ConstData::Float(y)) => ConstData::Float(x as f32 * y),
             (ConstData::Float(x), ConstData::Int(y)) => ConstData::Float(x * y as f32),
-            (ConstData::Vector(x), ConstData::Vector(y)) => {
-                ConstData::Vector(x.into_iter().zip(y).map(|(x, y)| x * y).collect())
-            }
+            (ConstData::Vector(x), ConstData::Vector(y)) => ConstData::Vector(
+                x.into_iter()
+                    .zip(y)
+                    .map(|(x, y)| Box::new((*x.deref()).clone() * (*y.deref()).clone()))
+                    .collect(),
+            ),
             (ConstData::Matrix(x), ConstData::Matrix(y)) => ConstData::Matrix(
                 x.into_iter()
                     .zip(y)
-                    .map(|(x, y)| x.into_iter().zip(y).map(|(x, y)| x * y).collect())
+                    .map(|(x, y)| {
+                        x.into_iter()
+                            .zip(y)
+                            .map(|(x, y)| Box::new((*x.deref()).clone() * (*y.deref()).clone()))
+                            .collect()
+                    })
                     .collect(),
             ),
             (x, y) => panic!("Cannot multiply {:?} and {:?}", x, y),
@@ -296,13 +313,21 @@ impl core::ops::Sub for ConstData {
             (ConstData::Float(x), ConstData::Float(y)) => ConstData::Float(x - y),
             (ConstData::Int(x), ConstData::Float(y)) => ConstData::Float(x as f32 - y),
             (ConstData::Float(x), ConstData::Int(y)) => ConstData::Float(x - y as f32),
-            (ConstData::Vector(x), ConstData::Vector(y)) => {
-                ConstData::Vector(x.into_iter().zip(y).map(|(x, y)| x - y).collect())
-            }
+            (ConstData::Vector(x), ConstData::Vector(y)) => ConstData::Vector(
+                x.into_iter()
+                    .zip(y)
+                    .map(|(x, y)| Box::new((*x.deref()).clone() - (*y.deref()).clone()))
+                    .collect(),
+            ),
             (ConstData::Matrix(x), ConstData::Matrix(y)) => ConstData::Matrix(
                 x.into_iter()
                     .zip(y)
-                    .map(|(x, y)| x.into_iter().zip(y).map(|(x, y)| x - y).collect())
+                    .map(|(x, y)| {
+                        x.into_iter()
+                            .zip(y)
+                            .map(|(x, y)| Box::new((*x.deref()).clone() - (*y.deref()).clone()))
+                            .collect()
+                    })
                     .collect(),
             ),
             (x, y) => panic!("Cannot subtract {:?} and {:?}", x, y),
@@ -319,13 +344,21 @@ impl core::ops::Div for ConstData {
             (ConstData::Float(x), ConstData::Float(y)) => ConstData::Float(x / y),
             (ConstData::Int(x), ConstData::Float(y)) => ConstData::Float(x as f32 / y),
             (ConstData::Float(x), ConstData::Int(y)) => ConstData::Float(x / y as f32),
-            (ConstData::Vector(x), ConstData::Vector(y)) => {
-                ConstData::Vector(x.into_iter().zip(y).map(|(x, y)| x / y).collect())
-            }
+            (ConstData::Vector(x), ConstData::Vector(y)) => ConstData::Vector(
+                x.into_iter()
+                    .zip(y)
+                    .map(|(x, y)| Box::new((*x.deref()).clone() / (*y.deref()).clone()))
+                    .collect(),
+            ),
             (ConstData::Matrix(x), ConstData::Matrix(y)) => ConstData::Matrix(
                 x.into_iter()
                     .zip(y)
-                    .map(|(x, y)| x.into_iter().zip(y).map(|(x, y)| x / y).collect())
+                    .map(|(x, y)| {
+                        x.into_iter()
+                            .zip(y)
+                            .map(|(x, y)| Box::new((*x.deref()).clone() / (*y.deref()).clone()))
+                            .collect()
+                    })
                     .collect(),
             ),
             (x, y) => panic!("Cannot divide {:?} and {:?}", x, y),
@@ -867,6 +900,57 @@ impl Analysis<ChiIR> for ChiAnalysis {
                         "Unexpected dtype for while loop condition: {:?}",
                         egraph[*cond].data
                     );
+                }
+            }
+            ChiIR::Index([x, i]) => {
+                if let AnalysisInfo::DType(DataType::TensorType(x_dtype, x_shape)) =
+                    &egraph[*x].data.analysis_info
+                {
+                    let dtype = if x_shape.len() == 1 {
+                        x_dtype.deref().clone()
+                    } else {
+                        DataType::TensorType(
+                            Box::new(x_dtype.deref().clone()),
+                            x_shape[1..].to_vec(),
+                        )
+                    };
+                    match &egraph[*i].data.analysis_info {
+                        AnalysisInfo::DType(DataType::Int(_)) => {
+                            if let Some(idx) = &egraph[*i].data.consts {
+                                if let ConstData::Int(idx) = idx {
+                                    if *idx < 0 {
+                                        panic!("Negative index: {:?}", idx);
+                                    }
+                                    if *idx >= x_shape.len() as i32 {
+                                        panic!("Index out of bounds: {:?}", idx);
+                                    }
+                                    let consts = match ChiAnalysis::get_constant(egraph, x) {
+                                        Some(ConstData::Matrix(x)) => {
+                                            Some(ConstData::Vector(x[*idx as usize].clone()))
+                                        }
+                                        Some(ConstData::Vector(x)) => {
+                                            Some((*x[*idx as usize].deref()).clone())
+                                        }
+                                        _ => None,
+                                    };
+                                    ChiAnalysisData {
+                                        analysis_info: AnalysisInfo::DType(dtype),
+                                        consts,
+                                    }
+                                } else {
+                                    panic!("Non-integer index: {:?}", idx);
+                                }
+                            } else {
+                                ChiAnalysisData {
+                                    analysis_info: AnalysisInfo::DType(dtype),
+                                    consts: None,
+                                }
+                            }
+                        }
+                        others => panic!("Non-integer index: {:?}", others),
+                    }
+                } else {
+                    panic!("Unexpected dtype for indexing: {:?}", egraph[*x].data);
                 }
             }
             ChiIR::EWAdd([x, y]) | ChiIR::EWMult([x, y]) => {
