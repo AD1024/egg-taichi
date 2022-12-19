@@ -7,6 +7,8 @@ use std::{
     str::FromStr,
 };
 
+use crate::interp::interp;
+
 define_language! {
     pub enum ChiIR {
         // Scala addition
@@ -23,6 +25,11 @@ define_language! {
         "<" = Lt([Id; 2]),
         "==" = Equals([Id; 2]),
         "pow" = Pow([Id; 2]),
+
+        "land" = LAnd([Id; 2]),
+        "lor" = LOr([Id; 2]),
+        "lnot" = LNot([Id; 1]),
+        "lxor" = LXor([Id; 2]),
 
         "bitand" = BitAnd([Id; 2]),
         "bitor" = BitOr([Id; 2]),
@@ -66,9 +73,44 @@ define_language! {
         "cast" = Cast([Id; 2]),
         "while" = While([Id; 2]),
         "shape" = Shape(Vec<Id>),
+        "constant" = Constant([Id; 2]),
+        "call" = Call(Vec<Id>),
+        TiOperator(TiOperators),
         DataType(DataType),
-        Constant(NotNan<f64>),
         Symbol(String),
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum TiOperators {
+    Exp,
+    Dot,
+    Norm,
+    NormSqr,
+}
+
+impl Display for TiOperators {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TiOperators::Exp => write!(f, "ti.exp"),
+            TiOperators::Dot => write!(f, "ti.dot"),
+            TiOperators::Norm => write!(f, "ti.norm"),
+            TiOperators::NormSqr => write!(f, "ti.norm_sqr"),
+        }
+    }
+}
+
+impl FromStr for TiOperators {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "ti.exp" => Ok(TiOperators::Exp),
+            "ti.dot" => Ok(TiOperators::Dot),
+            "ti.norm" => Ok(TiOperators::Norm),
+            "ti.norm_sqr" => Ok(TiOperators::NormSqr),
+            _ => Err(format!("Unknown operator: {}", s)),
+        }
     }
 }
 
@@ -521,6 +563,35 @@ impl Analysis<ChiIR> for ChiAnalysis {
 
     fn make(egraph: &mut egg::EGraph<ChiIR, Self>, enode: &ChiIR) -> ChiAnalysisData {
         match enode {
+            ChiIR::Call(params) => {
+                assert!(params.len() >= 2);
+                let op = params.first().unwrap();
+                assert_eq!(egraph[*op].nodes.len(), 1);
+                let op = &egraph[*op].nodes[0];
+                let args = &params[1..]
+                    .iter()
+                    .map(|x| &egraph[*x].data)
+                    .collect::<Vec<_>>()[..];
+                match op {
+                    ChiIR::TiOperator(TiOperators::Exp) => match args {
+                        [val] => interp(TiOperators::Exp, vec![val]),
+                        _ => panic!("ti.exp only takes 1 argument"),
+                    },
+                    ChiIR::TiOperator(TiOperators::Dot) => match args {
+                        [x, y] => interp(TiOperators::Dot, vec![x, y]),
+                        _ => panic!("ti.dot only takes 2 arguments"),
+                    },
+                    ChiIR::TiOperator(TiOperators::Norm) => match args {
+                        [x] => interp(TiOperators::Norm, vec![x]),
+                        _ => panic!("ti.norm only takes 1 argument"),
+                    },
+                    ChiIR::TiOperator(TiOperators::NormSqr) => match args {
+                        [x] => interp(TiOperators::NormSqr, vec![x]),
+                        _ => panic!("ti.norm_sqr only takes 1 argument"),
+                    },
+                    _ => panic!("Unrecognized ti operator: {:?}", op),
+                }
+            }
             ChiIR::SMinus([x, y])
             | ChiIR::SMult([x, y])
             | ChiIR::SDiv([x, y])
@@ -558,6 +629,24 @@ impl Analysis<ChiIR> for ChiAnalysis {
                 analysis_info: AnalysisInfo::DType(DataType::Bool),
                 consts: None,
             },
+            ChiIR::LAnd([x, y]) | ChiIR::LOr([x, y]) | ChiIR::LXor([x, y]) => {
+                let x_dtype = ChiAnalysis::get_dtype(egraph, x);
+                let y_dtype = ChiAnalysis::get_dtype(egraph, y);
+                assert_eq!(x_dtype, DataType::Bool);
+                assert_eq!(y_dtype, DataType::Bool);
+                ChiAnalysisData {
+                    analysis_info: AnalysisInfo::DType(DataType::Bool),
+                    consts: None,
+                }
+            }
+            ChiIR::LNot([x]) => {
+                let x_dtype = ChiAnalysis::get_dtype(egraph, x);
+                assert_eq!(x_dtype, DataType::Bool);
+                ChiAnalysisData {
+                    analysis_info: AnalysisInfo::DType(DataType::Bool),
+                    consts: None,
+                }
+            }
             ChiIR::BitAnd([x, y])
             | ChiIR::BitOr([x, y])
             | ChiIR::BitXor([x, y])
@@ -699,9 +788,9 @@ impl Analysis<ChiIR> for ChiAnalysis {
                     )
                 }
             }
-            ChiIR::Constant(x) => ChiAnalysisData {
-                analysis_info: AnalysisInfo::DType(DataType::Float(64)),
-                consts: Some(f32::from(x.as_f32()).into()),
+            ChiIR::Constant([v, t]) => ChiAnalysisData {
+                analysis_info: egraph[*t].data.analysis_info.clone(),
+                consts: Some(egraph[*v].data.consts.clone().unwrap()),
             },
             ChiIR::Symbol(s) => {
                 if let Ok(x) = s.parse::<i32>() {
@@ -735,14 +824,12 @@ impl Analysis<ChiIR> for ChiAnalysis {
                             consts: None,
                         }
                     } else {
-                        // ChiAnalysisData::DType(dt.clone())
                         ChiAnalysisData {
                             analysis_info: AnalysisInfo::DType(dt.clone()),
                             consts: None,
                         }
                     }
                 } else {
-                    // ChiAnalysisData::DType(DataType::Unknown)
                     ChiAnalysisData {
                         analysis_info: AnalysisInfo::DType(DataType::Unknown),
                         consts: None,
@@ -1086,5 +1173,12 @@ mod test {
                 .unwrap(),
         );
         println!("{:?}", egraph[id].data);
+    }
+
+    #[test]
+    fn test_binding() {
+        let expr: RecExpr<ChiIR> = "(let x (matrix (vector 1 2 3) (vector 3 4 5) f32) 
+                                        (let y (matrix (vector 1 2) (vector 2 3) (vector 3 4) f32)
+                                            (Call ti.dot x y)))".parse().unwrap();
     }
 }

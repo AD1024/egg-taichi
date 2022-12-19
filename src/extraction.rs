@@ -14,7 +14,11 @@ impl<'a> CostFunction<ChiIR> for ComputeCost<'a> {
         C: FnMut(egg::Id) -> Self::Cost,
     {
         let c = match enode {
-            ChiIR::Constant(_) | ChiIR::Var(_) | ChiIR::Matrix(_) | ChiIR::Vector(_) => 1,
+            ChiIR::Constant(_)
+            | ChiIR::Var(_)
+            | ChiIR::Matrix(_)
+            | ChiIR::Vector(_)
+            | ChiIR::Index(_) => 1,
             ChiIR::SAdd([x, y]) | ChiIR::SMinus([x, y]) => 5 * i64::max(costs(*x), costs(*y)),
             ChiIR::SMult([x, y]) | ChiIR::SMod([x, y]) | ChiIR::SDiv([x, y]) => {
                 10 * i64::max(costs(*x), costs(*y))

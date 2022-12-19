@@ -15,6 +15,16 @@ fn is_scalar(x: Var) -> impl Fn(&mut EGraph, egg::Id, &egg::Subst) -> bool {
     }
 }
 
+fn is_integer(x: Var) -> impl Fn(&mut EGraph, egg::Id, &egg::Subst) -> bool {
+    move |egraph, _id, subst| match &egraph[subst[x]].data.analysis_info {
+        AnalysisInfo::DType(dt) => match dt {
+            DataType::Int(_) | DataType::UInt(_) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
 struct BinopConstFoldApplier {
     lhs: Var,
     rhs: Var,
@@ -122,6 +132,29 @@ pub fn alg_simp() -> Vec<Rewrite<ChiIR, ChiAnalysis>> {
         rw!("const-fold-bitand"; "(bitand ?x ?y)" => { BinopConstFoldApplier { lhs: "?x".parse().unwrap(), rhs: "?y".parse().unwrap(), op: "&".to_string() }}),
         rw!("const-fold-bitor"; "(bitor ?x ?y)" => { BinopConstFoldApplier { lhs: "?x".parse().unwrap(), rhs: "?y".parse().unwrap(), op: "|".to_string() }}),
         rw!("div-to-shift"; "(sdiv ?lhs ?x)" => { ToShiftApplier { rhs: "?x".parse().unwrap(), shift_op: "bitshr" }}),
+        rw!("power2-to-shift"; "(pow 2 ?x)" => "(bitshl 1 ?x)"),
+        rw!("power2-to-shift-1"; "(pow (constant 2 ?ty) ?x)" => "(bitshl (constant 1 ?ty) ?x)" if is_integer("?ty".parse().unwrap())),
+        rw!("bitand-comm"; "(bitand ?x ?y)" => "(bitand ?y ?x)"),
+        rw!("bitand-assoc"; "(bitand (bitand ?x ?y) ?z)" => "(bitand ?x (bitand ?y ?z))"),
+        rw!("bitor-comm"; "(bitor ?x ?y)" => "(bitor ?y ?x)"),
+        rw!("bitor-assoc"; "(bitor (bitor ?x ?y) ?z)" => "(bitor ?x (bitor ?y ?z))"),
+        rw!("bitand-dist"; "(bitand ?x (bitor ?y ?z))" => "(bitor (bitand ?x ?y) (bitand ?x ?z))"),
+        rw!("bitshl-0"; "(bitshl ?x 0)" => "?x"),
+        rw!("bitshr-0"; "(bitshr ?x 0)" => "?x"),
+        rw!("bitand-0"; "(bitand ?x 0)" => "0"),
+        rw!("bitand-1"; "(bitand ?x 1)" => "?x"),
+        rw!("bitor-0"; "(bitor ?x 0)" => "?x"),
+        rw!("bitor-1"; "(bitor ?x 1)" => "1"),
+        rw!("land-comm"; "(land ?x ?y)" => "(land ?y ?x)"),
+        rw!("land-assoc"; "(land (land ?x ?y) ?z)" => "(land ?x (land ?y ?z))"),
+        rw!("lor-comm"; "(lor ?x ?y)" => "(lor ?y ?x)"),
+        rw!("lor-assoc"; "(lor (lor ?x ?y) ?z)" => "(lor ?x (lor ?y ?z))"),
+        rw!("land-dist"; "(land ?x (lor ?y ?z))" => "(lor (land ?x ?y) (land ?x ?z))"),
+        rw!("land-true"; "(land ?x true)" => "?x"),
+        rw!("land-false"; "(land ?x false)" => "false"),
+        rw!("lor-true"; "(lor ?x true)" => "true"),
+        rw!("lor-false"; "(lor ?x false)" => "?x"),
+        rw!("demorgan"; "(land (lnot ?x) (lnot ?y))" => "(lnot (lor ?x ?y))"),
         rw!("car-cons"; "(car (cons ?x ?y))" => "?x"),
         rw!("cdr-cons"; "(cdr (cons ?x ?y))" => "?y"),
         rw!("div-1"; "(sdiv ?x 1)" => "?x"),
