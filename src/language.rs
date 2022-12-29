@@ -1179,6 +1179,8 @@ mod test {
     fn test_binding() {
         let expr: RecExpr<ChiIR> = "(let x (matrix (vector 1 2 3) (vector 3 4 5) f32) 
                                         (let y (matrix (vector 1 2) (vector 2 3) (vector 3 4) f32)
-                                            (Call ti.dot x y)))".parse().unwrap();
+                                            (Call ti.dot x y)))"
+            .parse()
+            .unwrap();
     }
 }

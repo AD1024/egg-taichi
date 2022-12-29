@@ -115,6 +115,7 @@ impl Applier<ChiIR, ChiAnalysis> for ToShiftApplier {
 
 pub fn alg_simp() -> Vec<Rewrite<ChiIR, ChiAnalysis>> {
     vec![
+        rw!("times-2-shift"; "(smult ?x 2)" => "(bitshl ?x 1)" if is_integer("?x".parse().unwrap())),
         rw!("smult-id"; "(smult 1 ?x)" => "?x"),
         rw!("smult-0"; "(smult 0 ?x)" => "0"),
         rw!("smult-comm"; "(smult ?x ?y)" => "(smult ?y ?x)"),

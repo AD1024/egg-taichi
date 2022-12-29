@@ -19,15 +19,14 @@ impl<'a> CostFunction<ChiIR> for ComputeCost<'a> {
             | ChiIR::Matrix(_)
             | ChiIR::Vector(_)
             | ChiIR::Index(_) => 1,
-            ChiIR::SAdd([x, y]) | ChiIR::SMinus([x, y]) => 5 * i64::max(costs(*x), costs(*y)),
-            ChiIR::SMult([x, y]) | ChiIR::SMod([x, y]) | ChiIR::SDiv([x, y]) => {
-                10 * i64::max(costs(*x), costs(*y))
-            }
+            ChiIR::SAdd([x, y]) | ChiIR::SMinus([x, y]) => 3,
+            ChiIR::SMult([x, y]) => 8,
+            ChiIR::SMod([x, y]) | ChiIR::SDiv([x, y]) => 20,
             ChiIR::BitAnd([x, y])
             | ChiIR::BitOr([x, y])
             | ChiIR::BitXor([x, y])
             | ChiIR::BitShl([x, y])
-            | ChiIR::BitShr([x, y]) => i64::max(costs(*x), costs(*y)),
+            | ChiIR::BitShr([x, y]) => 1,
             ChiIR::Equals([x, y])
             | ChiIR::Gt([x, y])
             | ChiIR::Lt([x, y])
@@ -90,11 +89,12 @@ mod test {
     #[test]
     fn test_cse() {
         let expr: egg::RecExpr<ChiIR> = "(cons
-                                            (sadd j (smult i (sadd N 1)))
-                                            (cons
-                                                (sadd 1 (sadd j (smult i (sadd N 1))))
-                                                (sadd N (sadd 2 (sadd j (smult i (sadd N 1))))))
-                                        )"
+                                            (smult (sadd (smult i N) j) 2)
+                                                (cons
+                                                    (sadd j (smult i (sadd N 1)))
+                                                    (cons
+                                                        (sadd 1 (sadd j (smult i (sadd N 1))))
+                                                        (sadd N (sadd 2 (sadd j (smult i (sadd N 1))))))))"
         .parse()
         .unwrap();
         let mut egraph: egg::EGraph<ChiIR, ChiAnalysis> = egg::EGraph::new(ChiAnalysis {
@@ -111,6 +111,14 @@ mod test {
         });
         let rt = egraph.add_expr(&expr);
         let runner = egg::Runner::default().with_egraph(egraph);
+        let extractor = egg::Extractor::new(
+            &runner.egraph,
+            super::ComputeCost {
+                egraph: &runner.egraph,
+            },
+        );
+        println!("Cost before optimization: {}", extractor.find_best(rt).0);
+        drop(extractor);
         let runner = runner.run(&alg_simp());
         let extractor = egg::Extractor::new(
             &runner.egraph,
